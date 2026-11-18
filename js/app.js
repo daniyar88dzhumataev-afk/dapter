@@ -191,12 +191,19 @@ function renderMain() {
   const title = state.settings.shopName || t('app.name');
   const tabs = ['debtors', 'overdue', 'all'];
   const sorts = ['recent', 'amount', 'name'];
+  const remind = B.backupReminder({ lastBackupAt: state.settings.lastBackupAt, customers: state.customers, transactions: state.txs });
   app().innerHTML = `
     <header class="bar">
       <h1 class="bar-title">${esc(title)}</h1>
       <a class="icon-btn" href="#/settings" aria-label="${esc(t('settings.title'))}">⚙</a>
     </header>
     <main class="page">
+      ${
+        remind.show
+          ? `<div class="notice backup-notice"><span>${esc(t('backup.banner', { n: remind.days }))}</span>
+             <button type="button" class="btn small primary" data-action="backup-save">${esc(t('backup.bannerBtn'))}</button></div>`
+          : ''
+      }
       <section class="totals" aria-label="${esc(t('totals.aria'))}">
         <div><span class="label">${esc(t('totals.debt'))}</span><b class="tot-sum">${money(tot.totalDebt)}</b></div>
         <div class="tot-side"><span class="label">${esc(t('totals.debtors'))}</span><b>${tot.debtorsCount}</b></div>
@@ -530,6 +537,13 @@ function renderSettings() {
         <input id="restore-file" type="file" accept=".json,application/json" hidden>
       </div>
 
+      <h2 class="section-title">${esc(t('install.title'))}</h2>
+      ${
+        isStandalone()
+          ? `<p class="muted">${esc(t('install.done'))}</p>`
+          : `<button type="button" class="btn" data-action="install-help">${esc(t('install.how'))}</button>`
+      }
+
       <h2 class="section-title">${esc(t('archive.title'))}</h2>
       ${
         archived.length
@@ -656,7 +670,7 @@ async function backupSave() {
     const r = await B.exportBackup();
     if (!r.saved) return;
     await reload();
-    renderSettings();
+    render();
     toast(t('backup.saved', { file: r.fileName }));
   } catch {
     toast(t('backup.failed'));
@@ -686,6 +700,96 @@ async function onRestoreFile(input) {
     toast(t('restore.done'));
   } catch {
     toast(t('restore.failed'));
+  }
+}
+
+// ---------- Установка на главный экран и обновление версии (раздел 7) ----------
+
+let installPrompt = null; // событие Chrome на Android: можно показать системное окно установки
+
+const isStandalone = () => window.matchMedia?.('(display-mode: standalone)').matches || navigator.standalone === true;
+const isIOS = () =>
+  /iphone|ipad|ipod/i.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
+window.addEventListener('beforeinstallprompt', (e) => {
+  e.preventDefault();
+  installPrompt = e;
+});
+window.addEventListener('appinstalled', () => {
+  installPrompt = null;
+  local.set('dapter.installHintSeen', '1');
+});
+
+async function showInstallHint() {
+  local.set('dapter.installHintSeen', '1');
+  if (isIOS()) {
+    await showDialog({ title: t('install.title'), text: t('install.ios'), buttons: [{ label: t('install.ok'), value: 'ok', kind: 'primary' }] });
+    return;
+  }
+  if (installPrompt) {
+    const r = await showDialog({
+      title: t('install.title'),
+      text: t('install.android'),
+      buttons: [
+        { label: t('install.later'), value: null },
+        { label: t('install.button'), value: 'ok', kind: 'primary' },
+      ],
+    });
+    if (r.value === 'ok' && installPrompt) {
+      const p = installPrompt;
+      installPrompt = null;
+      await p.prompt();
+    }
+    return;
+  }
+  await showDialog({ title: t('install.title'), text: t('install.manual'), buttons: [{ label: t('install.ok'), value: 'ok', kind: 'primary' }] });
+}
+
+/** Подсказка при первом запуске: только если приложение не установлено и подсказку ещё не показывали. */
+function maybeShowInstallHint() {
+  if (isStandalone() || local.get('dapter.installHintSeen')) return;
+  // Небольшая пауза: Chrome присылает beforeinstallprompt не сразу после загрузки
+  setTimeout(() => {
+    if (!isStandalone() && !local.get('dapter.installHintSeen') && !dialogOpen && !sheet && !state.settings.pinHash) showInstallHint();
+  }, 1500);
+}
+
+let reloadingForUpdate = false;
+
+function showUpdateBar(worker) {
+  const bar = $('#update-bar');
+  bar.innerHTML = '<span class="toast-text"></span>';
+  $('.toast-text', bar).textContent = t('update.available');
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'toast-btn';
+  btn.textContent = t('update.button');
+  btn.addEventListener('click', () => {
+    reloadingForUpdate = true;
+    btn.disabled = true;
+    worker.postMessage('skipWaiting');
+  });
+  bar.appendChild(btn);
+  bar.hidden = false;
+}
+
+async function registerServiceWorker() {
+  // Service worker работает только по https и на localhost
+  if (!('serviceWorker' in navigator) || !window.isSecureContext) return;
+  try {
+    const reg = await navigator.serviceWorker.register('sw.js');
+    if (reg.waiting && navigator.serviceWorker.controller) showUpdateBar(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const w = reg.installing;
+      w?.addEventListener('statechange', () => {
+        if (w.state === 'installed' && navigator.serviceWorker.controller) showUpdateBar(w);
+      });
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloadingForUpdate) location.reload();
+    });
+  } catch {
+    /* без service worker приложение тоже работает, только не офлайн */
   }
 }
 
@@ -1113,6 +1217,7 @@ const actions = {
   'pin-off': () => pinOff(),
   'backup-save': () => backupSave(),
   'backup-restore': () => $('#restore-file')?.click(),
+  'install-help': () => showInstallHint(),
 };
 
 document.addEventListener('click', (e) => {
@@ -1219,6 +1324,8 @@ async function init() {
   document.title = t('app.name');
   DB.requestPersistence();
   render();
+  registerServiceWorker();
+  maybeShowInstallHint();
 }
 
 init();

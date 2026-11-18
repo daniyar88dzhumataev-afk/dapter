@@ -3,9 +3,27 @@
 // Нижняя часть — работа с файлами в браузере (проверяется вручную).
 
 import { SCHEMA_VERSION, exportAll, replaceAll, saveSettings } from './db.js';
-import { validateAmount, shopTotals } from './ledger.js';
+import { validateAmount, shopTotals, calendarDaysBetween } from './ledger.js';
 
 export const APP_ID = 'dapter';
+export const BACKUP_REMIND_DAYS = 7;
+
+/**
+ * Напоминание о резервной копии (раздел 7): показать, если с последней копии
+ * прошло больше 7 дней. Если копии не было — считаем от самой ранней записи.
+ * Нет данных — напоминать не о чем.
+ * Возвращает { show, days }.
+ */
+export function backupReminder({ lastBackupAt, customers, transactions }, now = new Date()) {
+  let since = lastBackupAt;
+  if (!since) {
+    const dates = [...customers, ...transactions].map((r) => r.createdAt).filter(Boolean);
+    if (dates.length === 0) return { show: false, days: 0 };
+    since = dates.reduce((min, d) => (d < min ? d : min));
+  }
+  const days = calendarDaysBetween(since, now);
+  return { show: days > BACKUP_REMIND_DAYS, days };
+}
 
 // ---------- Чистые функции ----------
 
