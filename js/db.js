@@ -117,6 +117,20 @@ function nowISO() {
   return new Date().toISOString();
 }
 
+/**
+ * UUID v4. crypto.randomUUID есть только в защищённом контексте (https, localhost);
+ * при проверке с телефона по http://192.168.… используем запасной вариант
+ * на crypto.getRandomValues, который работает везде.
+ */
+export function newId() {
+  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
 /** Проверка полей покупателя (раздел 5). Возвращает очищенную копию или бросает DbError. */
 export function cleanCustomer(input) {
   const name = String(input.name ?? '').trim();
@@ -166,7 +180,7 @@ export async function saveCustomer(input) {
     if (!existing) throw new DbError('customer_not_found');
     record = { ...existing, ...fields, updatedAt: time };
   } else {
-    record = { id: crypto.randomUUID(), ...fields, archived: false, createdAt: time, updatedAt: time };
+    record = { id: newId(), ...fields, archived: false, createdAt: time, updatedAt: time };
   }
   store.put(record);
   await done(tx);
@@ -236,7 +250,7 @@ export async function addTransaction({ customerId, type, amount, method, comment
     throw new DbError('customer_not_found');
   }
   const record = {
-    id: crypto.randomUUID(),
+    id: newId(),
     customerId,
     type,
     amount: check.value,
