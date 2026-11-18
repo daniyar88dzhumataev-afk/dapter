@@ -166,6 +166,76 @@ export function shopTotals(customers, transactions, now) {
   return { totalDebt, debtorsCount, todayCredit, todayPayment };
 }
 
+// ---------- Отчёт за месяц ----------
+
+/** Сумма положительных балансов (общий долг) по операциям, сделанным раньше момента until. */
+function debtBefore(byCustomer, until) {
+  let total = 0;
+  for (const ops of byCustomer.values()) {
+    const balance = customerBalance(ops.filter((t) => Date.parse(t.createdAt) < until));
+    if (balance > 0) total += balance;
+  }
+  return total;
+}
+
+/**
+ * Отчёт по движениям за месяц (месяц — по местному времени телефона, month: 0–11).
+ * Отменённые операции не учитываются.
+ * Возвращает {
+ *   credit, creditCount,             — выдано в долг
+ *   payment, paymentCount, cash, kaspi — вернули (и по способам)
+ *   debtStart, debtEnd, change       — общий долг на начало и конец месяца
+ *   byCustomer: [{ customerId, credit, payment, balanceEnd }] — у кого были операции
+ *   operations: [...]                — операции месяца, новые сверху
+ * }
+ */
+export function monthReport(transactions, year, month) {
+  const start = new Date(year, month, 1).getTime();
+  const end = new Date(year, month + 1, 1).getTime();
+  const active = activeTransactions(transactions);
+
+  const byCustomer = new Map();
+  for (const t of active) {
+    if (!byCustomer.has(t.customerId)) byCustomer.set(t.customerId, []);
+    byCustomer.get(t.customerId).push(t);
+  }
+
+  const operations = active
+    .filter((t) => {
+      const time = Date.parse(t.createdAt);
+      return time >= start && time < end;
+    })
+    .sort((a, b) => (a.createdAt < b.createdAt ? 1 : a.createdAt > b.createdAt ? -1 : 0));
+
+  const r = { credit: 0, creditCount: 0, payment: 0, paymentCount: 0, cash: 0, kaspi: 0 };
+  const perCustomer = new Map();
+  for (const t of operations) {
+    if (!perCustomer.has(t.customerId)) perCustomer.set(t.customerId, { customerId: t.customerId, credit: 0, payment: 0 });
+    const row = perCustomer.get(t.customerId);
+    if (t.type === 'credit') {
+      r.credit += t.amount;
+      r.creditCount += 1;
+      row.credit += t.amount;
+    } else if (t.type === 'payment') {
+      r.payment += t.amount;
+      r.paymentCount += 1;
+      row.payment += t.amount;
+      if (t.method === 'kaspi') r.kaspi += t.amount;
+      else r.cash += t.amount;
+    }
+  }
+
+  const rows = [...perCustomer.values()].map((row) => ({
+    ...row,
+    balanceEnd: customerBalance(byCustomer.get(row.customerId).filter((t) => Date.parse(t.createdAt) < end)),
+  }));
+  rows.sort((a, b) => b.balanceEnd - a.balanceEnd || b.credit - a.credit);
+
+  const debtStart = debtBefore(byCustomer, start);
+  const debtEnd = debtBefore(byCustomer, end);
+  return { ...r, debtStart, debtEnd, change: debtEnd - debtStart, byCustomer: rows, operations };
+}
+
 // ---------- Поиск (правило 8) ----------
 
 /** Нижний регистр, «ё» → «е», лишние пробелы убраны. Казахские буквы сохраняются. */

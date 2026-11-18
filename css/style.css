@@ -57,7 +57,7 @@ a { color: var(--primary); }
   color: var(--primary-ink); text-decoration: none; font-size: 22px;
   border-radius: 10px;
 }
-.bar-link { font-size: 16px; font-weight: 600; }
+.bar-link { font-size: 16px; font-weight: 600; padding: 0 8px; }
 .icon-btn:active, .bar-link:active { background: rgba(255, 255, 255, 0.15); }
 
 .page { padding: 12px 16px; }
@@ -289,6 +289,48 @@ b.payment { color: var(--payment); }
 }
 .update-bar[hidden] { display: none; }
 .backup-notice span { flex: 1 1 160px; }
+
+/* ---------- Архив, погашение, обнуление ---------- */
+.notice.paid { background: var(--payment-soft); color: var(--payment); }
+.dup { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.dup span { flex: 1 1 160px; }
+.btn.wa-fill { background: var(--wa); border-color: var(--wa); color: #fff; }
+.danger-title { color: var(--credit); margin-top: 36px; }
+.page > .btn.danger { width: 100%; }
+
+/* ---------- Отчёт за месяц ---------- */
+.month-nav { display: grid; grid-template-columns: 56px 1fr 56px; align-items: center; gap: 8px; text-align: center; font-size: 19px; }
+.month-nav .btn { font-size: 24px; padding: 0; }
+.report-sum {
+  margin-top: 12px; padding: 12px 16px; display: grid; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius);
+}
+.rs-row { display: grid; grid-template-columns: 1fr auto; align-items: baseline; gap: 2px 10px; }
+.rs-row b { font-size: 19px; text-align: right; }
+.rs-row small { grid-column: 2; text-align: right; }
+.rs-row.line { padding-top: 8px; border-top: 1px solid var(--line); }
+.rs-sub { font-size: 14px; margin-top: -2px; }
+.report-table { display: grid; gap: 4px; }
+.rt-head, .rt-row {
+  display: grid; grid-template-columns: minmax(0, 1.4fr) 1fr 1fr 1fr; gap: 6px; align-items: center;
+  font-size: 14px; text-align: right;
+}
+.rt-head { color: var(--muted); padding: 0 10px; }
+.rt-head span:first-child, .rt-row .rt-name { text-align: left; }
+.rt-row {
+  min-height: 48px; padding: 6px 10px; background: var(--surface); border: 1px solid var(--line);
+  border-radius: 10px; color: var(--text); text-decoration: none;
+}
+.rt-name { font-weight: 700; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.rt-row .credit, .rd-op b.credit { color: var(--credit); }
+.rt-row .payment, .rd-op b.payment { color: var(--payment); }
+.report-day { margin-bottom: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.rd-head { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 10px; padding: 8px 12px; background: var(--bg); font-size: 14px; }
+.rd-op {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  min-height: 48px; padding: 6px 12px; border-top: 1px solid var(--line); color: var(--text); text-decoration: none;
+}
+.rd-op small { display: block; font-size: 13px; }
 .toast-text { flex: 1; }
 .toast-btn {
   min-height: 44px; padding: 0 14px; border: 2px solid #fff; border-radius: 10px;

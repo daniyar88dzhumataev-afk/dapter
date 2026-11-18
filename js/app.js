@@ -81,6 +81,7 @@ const state = {
   tab: 'debtors',
   sort: 'recent',
   unlocked: false,
+  report: { year: new Date().getFullYear(), month: new Date().getMonth() },
 };
 
 async function reload() {
@@ -157,6 +158,7 @@ function parseRoute() {
   if (parts[0] === 'customer' && parts[1] && parts[2] === 'edit') return { name: 'edit', id: parts[1] };
   if (parts[0] === 'customer' && parts[1]) return { name: 'customer', id: parts[1] };
   if (parts[0] === 'settings') return { name: 'settings' };
+  if (parts[0] === 'report') return { name: 'report' };
   return { name: 'main' };
 }
 
@@ -171,6 +173,7 @@ function render() {
   if (r.name === 'customer') renderCustomer(r.id);
   else if (r.name === 'edit') renderEdit(r.id);
   else if (r.name === 'settings') renderSettings();
+  else if (r.name === 'report') renderReport();
   else renderMain();
 }
 
@@ -189,12 +192,13 @@ function renderNotFound() {
 function renderMain() {
   const tot = L.shopTotals(state.customers, state.txs, new Date());
   const title = state.settings.shopName || t('app.name');
-  const tabs = ['debtors', 'overdue', 'all'];
+  const tabs = ['debtors', 'overdue', 'archive'];
   const sorts = ['recent', 'amount', 'name'];
   const remind = B.backupReminder({ lastBackupAt: state.settings.lastBackupAt, customers: state.customers, transactions: state.txs });
   app().innerHTML = `
     <header class="bar">
       <h1 class="bar-title">${esc(title)}</h1>
+      <a class="bar-link" href="#/report">${esc(t('report.short'))}</a>
       <a class="icon-btn" href="#/settings" aria-label="${esc(t('settings.title'))}">⚙</a>
     </header>
     <main class="page">
@@ -238,14 +242,17 @@ function updateList() {
   const list = $('#list');
   if (!list) return;
   const query = state.query.trim();
-  let rows = state.customers.filter((c) => !c.archived);
+  // Архив — те, кто погасил долг (баланс ровно 0). Переплата остаётся в общем списке.
+  let rows = [...state.customers];
   if (query) {
-    // При поиске ищем среди всех покупателей, а не только во вкладке
+    // При поиске ищем среди всех покупателей, включая архив
     rows = rows.filter((c) => L.matchesSearch(c, query));
   } else if (state.tab === 'debtors') {
-    rows = rows.filter((c) => infoOf(c.id).balance > 0);
+    rows = rows.filter((c) => infoOf(c.id).balance !== 0);
   } else if (state.tab === 'overdue') {
     rows = rows.filter((c) => infoOf(c.id).overdue);
+  } else if (state.tab === 'archive') {
+    rows = rows.filter((c) => infoOf(c.id).balance === 0);
   }
   const sorters = {
     recent: (a, b) => (infoOf(b.id).lastAt > infoOf(a.id).lastAt ? 1 : infoOf(b.id).lastAt < infoOf(a.id).lastAt ? -1 : 0),
@@ -259,6 +266,7 @@ function updateList() {
     if (state.customers.length === 0) text = t('main.emptyStart');
     else if (query) text = t('main.emptySearch');
     else if (state.tab === 'overdue') text = t('main.emptyOverdue');
+    else if (state.tab === 'archive') text = t('main.emptyArchive');
     list.innerHTML = `<li class="empty">${esc(text)}</li>`;
     return;
   }
@@ -275,7 +283,8 @@ function rowHtml(c) {
   const i = infoOf(c.id);
   const flag = i.overLimit || i.overdue;
   const cls = i.balance > 0 ? 'debt' : i.balance < 0 ? 'over' : 'zero';
-  const sum = i.balance < 0 ? t('row.overpaid', { sum: money(-i.balance) }) : money(i.balance);
+  const sum =
+    i.balance < 0 ? t('row.overpaid', { sum: money(-i.balance) }) : i.balance === 0 ? t('row.paid') : money(i.balance);
   const marks = [daysText(i.days)];
   if (i.overdue) marks.push(t('row.overdue'));
   if (i.overLimit) marks.push(t('row.overLimit'));
@@ -301,9 +310,10 @@ function renderCustomer(id) {
       ? M.waLink(c.phone, M.reminderText(msgLang(), { name: c.name, amount: i.balance, shopName: s.shopName, kaspiPhone: s.kaspiPhone }))
       : null;
   const statement = c.phone ? M.waLink(c.phone, M.statementText(msgLang(), c, ops, { shopName: s.shopName, now: new Date() })) : null;
+  const paidOff = i.balance === 0 && L.activeTransactions(ops).length > 0;
+  const firstWa = paidOff ? waButton(thanksLink(c), t('card.thanks')) : waButton(reminder, t('card.remind'));
   const cls = i.balance > 0 ? 'debt' : i.balance < 0 ? 'over' : 'zero';
   const label = i.balance > 0 ? t('card.debt') : i.balance < 0 ? t('card.overpaid') : t('card.noDebt');
-  const dis = c.archived ? 'disabled' : '';
 
   app().innerHTML = `
     <header class="bar">${backLink('#/')}
@@ -311,12 +321,7 @@ function renderCustomer(id) {
       <a class="bar-link" href="${customerHref(id)}/edit">${esc(t('card.edit'))}</a>
     </header>
     <main class="page">
-      ${
-        c.archived
-          ? `<div class="notice">${esc(t('card.archived'))}
-             <button type="button" class="btn small" data-action="unarchive" data-id="${esc(id)}">${esc(t('archive.restore'))}</button></div>`
-          : ''
-      }
+      ${paidOff ? `<div class="notice paid">${esc(t('card.inArchive'))}</div>` : ''}
       <section class="card-info">
         ${c.phone ? `<div>${esc(M.formatPhone(c.phone))}</div>` : `<div class="muted">${esc(t('card.noPhone'))}</div>`}
         ${c.note ? `<div class="muted">${esc(c.note)}</div>` : ''}
@@ -327,17 +332,23 @@ function renderCustomer(id) {
         ${i.balance !== 0 ? `<b class="balance-sum">${money(Math.abs(i.balance))}</b>` : ''}
       </section>
       <div class="actions2">
-        <button type="button" class="btn big credit" data-action="op" data-type="credit" data-id="${esc(id)}" ${dis}>${esc(t('card.credit'))}</button>
-        <button type="button" class="btn big payment" data-action="op" data-type="payment" data-id="${esc(id)}" ${dis}>${esc(t('card.payment'))}</button>
+        <button type="button" class="btn big credit" data-action="op" data-type="credit" data-id="${esc(id)}">${esc(t('card.credit'))}</button>
+        <button type="button" class="btn big payment" data-action="op" data-type="payment" data-id="${esc(id)}">${esc(t('card.payment'))}</button>
       </div>
       <div class="actions2">
-        ${waButton(reminder, t('card.remind'))}
+        ${firstWa}
         ${waButton(statement, t('card.statement'))}
       </div>
       ${c.phone ? '' : `<p class="hint">${esc(t('card.waHint'))}</p>`}
       <h2 class="section-title">${esc(t('card.history'))}</h2>
       ${historyHtml(ops)}
     </main>`;
+}
+
+/** Ссылка WhatsApp с благодарностью за погашенный долг (или null, если нет телефона). */
+function thanksLink(c) {
+  if (!c?.phone) return null;
+  return M.waLink(c.phone, M.paidOffText(msgLang(), { name: c.name, shopName: state.settings.shopName }));
 }
 
 function waButton(href, label) {
@@ -372,6 +383,94 @@ function historyHtml(ops) {
     .join('')}</ul>`;
 }
 
+// ---------- Отчёт по движениям за месяц ----------
+
+// Названия месяцев — из i18n: не во всех браузерах есть казахские названия
+function monthTitle(year, month) {
+  return `${t('month.' + month)} ${year}`;
+}
+
+function renderReport() {
+  const { year, month } = state.report;
+  const now = new Date();
+  const isCurrent = year === now.getFullYear() && month === now.getMonth();
+  const r = L.monthReport(state.txs, year, month);
+  const name = (id) => customerById(id)?.name ?? '—';
+  const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + money(Math.abs(n));
+
+  // Операции по дням (новые сверху)
+  const days = [];
+  for (const op of r.operations) {
+    const key = M.formatDate(op.createdAt);
+    let day = days[days.length - 1];
+    if (!day || day.key !== key) days.push((day = { key, credit: 0, payment: 0, ops: [] }));
+    day.ops.push(op);
+    if (op.type === 'credit') day.credit += op.amount;
+    else day.payment += op.amount;
+  }
+
+  app().innerHTML = `
+    <header class="bar">${backLink('#/')}<h1 class="bar-title">${esc(t('report.title'))}</h1></header>
+    <main class="page">
+      <div class="month-nav">
+        <button type="button" class="btn" data-action="report-month" data-delta="-1" aria-label="${esc(t('report.prev'))}">‹</button>
+        <b>${esc(monthTitle(year, month))}</b>
+        <button type="button" class="btn" data-action="report-month" data-delta="1" aria-label="${esc(t('report.next'))}" ${isCurrent ? 'disabled' : ''}>›</button>
+      </div>
+
+      <section class="report-sum">
+        <div class="rs-row"><span>${esc(t('report.credit'))}</span>
+          <b class="credit">${money(r.credit)}</b><small class="muted">${esc(t('report.count', { n: r.creditCount }))}</small></div>
+        <div class="rs-row"><span>${esc(t('report.payment'))}</span>
+          <b class="payment">${money(r.payment)}</b><small class="muted">${esc(t('report.count', { n: r.paymentCount }))}</small></div>
+        <div class="rs-sub muted">${esc(t('method.cash'))}: ${money(r.cash)} · ${esc(t('method.kaspi'))}: ${money(r.kaspi)}</div>
+        <div class="rs-row line"><span>${esc(t('report.debtStart'))}</span><b>${money(r.debtStart)}</b></div>
+        <div class="rs-row"><span>${esc(isCurrent ? t('report.debtNow') : t('report.debtEnd'))}</span><b>${money(r.debtEnd)}</b></div>
+        <div class="rs-row"><span>${esc(t('report.change'))}</span>
+          <b class="${r.change > 0 ? 'credit' : r.change < 0 ? 'payment' : ''}">${signed(r.change)}</b></div>
+      </section>
+
+      ${
+        r.operations.length === 0
+          ? `<p class="empty">${esc(t('report.empty'))}</p>`
+          : `<h2 class="section-title">${esc(t('report.byCustomer'))}</h2>
+        <div class="report-table">
+          <div class="rt-head"><span>${esc(t('report.colName'))}</span><span>${esc(t('report.colCredit'))}</span><span>${esc(t('report.colPayment'))}</span><span>${esc(t('report.colBalance'))}</span></div>
+          ${r.byCustomer
+            .map(
+              (row) => `<a class="rt-row" href="${customerHref(row.customerId)}">
+                <span class="rt-name">${esc(name(row.customerId))}</span>
+                <span class="credit">${row.credit ? money(row.credit) : '—'}</span>
+                <span class="payment">${row.payment ? money(row.payment) : '—'}</span>
+                <span><b>${money(row.balanceEnd)}</b></span></a>`
+            )
+            .join('')}
+        </div>
+
+        <h2 class="section-title">${esc(t('report.byDay'))}</h2>
+        ${days
+          .map(
+            (d) => `<section class="report-day">
+              <div class="rd-head"><b>${esc(d.key)}</b>
+                <span class="muted">${esc(t('totals.todayCredit'))} <b class="credit">${money(d.credit)}</b> ·
+                ${esc(t('totals.todayPayment'))} <b class="payment">${money(d.payment)}</b></span></div>
+              ${d.ops
+                .map((op) => {
+                  const d2 = new Date(op.createdAt);
+                  const method = op.type === 'payment' && op.method ? ' · ' + t('method.' + op.method) : '';
+                  return `<a class="rd-op" href="${customerHref(op.customerId)}">
+                    <span>${two(d2.getHours())}:${two(d2.getMinutes())} ${esc(name(op.customerId))}
+                      <small class="muted">${esc((op.type === 'credit' ? t('op.credit') : t('op.payment')) + method)}${op.comment ? ' · ' + esc(op.comment) : ''}</small></span>
+                    <b class="${op.type}">${op.type === 'credit' ? '+' : '−'}${money(op.amount)}</b></a>`;
+                })
+                .join('')}
+            </section>`
+          )
+          .join('')}`
+      }
+    </main>`;
+}
+
 // ---------- 4.4 Покупатель: добавление и редактирование ----------
 
 const fv = (form, name) => form.querySelector(`[name="${name}"]`);
@@ -379,14 +478,6 @@ const fv = (form, name) => form.querySelector(`[name="${name}"]`);
 function renderEdit(id) {
   const c = id ? customerById(id) : null;
   if (id && !c) return renderNotFound();
-  const i = c ? infoOf(c.id) : null;
-  let archiveBlock = '';
-  if (c && !c.archived) {
-    archiveBlock =
-      i.balance === 0
-        ? `<button type="button" class="btn ghost danger" data-action="archive" data-id="${esc(c.id)}">${esc(t('archive.toArchive'))}</button>`
-        : `<p class="hint">${esc(t('archive.hasBalance'))}</p>`;
-  }
   app().innerHTML = `
     <header class="bar">${backLink(c ? customerHref(c.id) : '#/')}
       <h1 class="bar-title">${esc(c ? t('edit.titleEdit') : t('edit.titleNew'))}</h1></header>
@@ -407,7 +498,6 @@ function renderEdit(id) {
         <p id="form-error" class="error" role="alert" hidden></p>
         <button type="submit" class="btn big primary">${esc(t('edit.save'))}</button>
       </form>
-      ${archiveBlock}
     </main>`;
   checkDuplicate();
 }
@@ -459,32 +549,6 @@ async function submitCustomer(form) {
   }
 }
 
-async function archive(id) {
-  const c = customerById(id);
-  if (!c) return;
-  const ok = await confirmDialog(t('archive.confirmTitle'), t('archive.confirmText', { name: c.name }), t('archive.toArchive'), 'danger');
-  if (!ok) return;
-  try {
-    await DB.archiveCustomer(id);
-    await reload();
-    go('#/');
-    toast(t('archive.done'));
-  } catch (err) {
-    toast(errorText(err));
-  }
-}
-
-async function unarchive(id) {
-  try {
-    await DB.unarchiveCustomer(id);
-    await reload();
-    render();
-    toast(t('archive.restored'));
-  } catch (err) {
-    toast(errorText(err));
-  }
-}
-
 // ---------- 4.5 Настройки ----------
 
 const pinAvailable = () => Boolean(globalThis.crypto?.subtle);
@@ -509,7 +573,7 @@ function pinSection() {
 
 function renderSettings() {
   const s = state.settings;
-  const archived = state.customers.filter((c) => c.archived).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+  const canReset = pinAvailable() && Boolean(s.pinHash);
   app().innerHTML = `
     <header class="bar">${backLink('#/')}<h1 class="bar-title">${esc(t('settings.title'))}</h1></header>
     <main class="page">
@@ -554,18 +618,9 @@ function renderSettings() {
           : `<button type="button" class="btn" data-action="install-help">${esc(t('install.how'))}</button>`
       }
 
-      <h2 class="section-title">${esc(t('archive.title'))}</h2>
-      ${
-        archived.length
-          ? `<ul class="list">${archived
-              .map(
-                (c) => `<li class="row static"><span class="row-main"><span class="row-name">${esc(c.name)}</span>
-                  ${c.note ? `<span class="row-note">${esc(c.note)}</span>` : ''}</span>
-                  <button type="button" class="btn small" data-action="unarchive" data-id="${esc(c.id)}">${esc(t('archive.restore'))}</button></li>`
-              )
-              .join('')}</ul>`
-          : `<p class="muted">${esc(t('archive.empty'))}</p>`
-      }
+      <h2 class="section-title danger-title">${esc(t('reset.title'))}</h2>
+      <p class="hint">${esc(canReset ? t('reset.hint') : t('reset.needPin'))}</p>
+      <button type="button" class="btn danger" data-action="reset-app" ${canReset ? '' : 'disabled'}>${esc(t('reset.button'))}</button>
       <p class="footer muted">${esc(t('app.name'))} · ${esc(t('settings.privacy'))}</p>
     </main>`;
 }
@@ -641,6 +696,29 @@ async function setNewPin() {
   await reload();
   renderSettings();
   toast(t('pin.saved'));
+}
+
+/** Обнуление программы: только с верным PIN, после подтверждения и автокопии. Настройки остаются. */
+async function resetApp() {
+  if (!pinAvailable() || !state.settings.pinHash) return toast(t('reset.needPin'));
+  if (!(await verifyCurrentPin())) return;
+  const ok = await confirmDialog(
+    t('reset.confirmTitle'),
+    t('reset.confirmText', { customers: state.customers.length, transactions: state.txs.length }),
+    t('reset.confirm'),
+    'danger'
+  );
+  if (!ok) return;
+  try {
+    await B.resetData();
+    state.query = '';
+    state.tab = 'debtors';
+    await reload();
+    go('#/');
+    toast(t('reset.done'));
+  } catch (err) {
+    toast(errorText(err));
+  }
 }
 
 async function pinOff() {
@@ -882,6 +960,7 @@ function sheetCustomerHtml() {
         data-digits="${esc(s.newPhone)}" value="${esc(maskPhone(s.newPhone))}">
       <label class="check"><input id="sh-new-consent" type="checkbox" ${s.newConsent ? 'checked' : ''}>
         <span>${esc(t('field.consent'))}</span></label>
+      <div id="sh-dup" class="warn dup" hidden></div>
     </div>`;
   }
   return `<input id="sh-q" type="search" autocomplete="off" placeholder="${esc(t('sheet.searchCustomer'))}" value="${esc(s.query)}">
@@ -925,14 +1004,16 @@ function renderSheet() {
     </div>`;
   updateSheetAmount();
   updateSuggestions();
+  updateSheetDup();
 }
 
 function updateSuggestions() {
   const ul = $('#sh-sugg');
   if (!ul || !sheet) return;
   const q = sheet.query.trim();
+  // Архивные (погасившие) тоже здесь: повторный долг — без повторного ввода данных
   const list = state.customers
-    .filter((c) => !c.archived && (!q || L.matchesSearch(c, q)))
+    .filter((c) => !q || L.matchesSearch(c, q))
     .sort((a, b) => (infoOf(b.id).lastAt > infoOf(a.id).lastAt ? 1 : -1))
     .slice(0, 5);
   const isPhone = /^[+\d\s()-]+$/.test(q);
@@ -942,9 +1023,33 @@ function updateSuggestions() {
       .map(
         (c) => `<li><button type="button" class="sugg-btn" data-action="sh-pick" data-id="${esc(c.id)}">
           <span>${esc(c.name)}${c.note ? ` <span class="muted">${esc(c.note)}</span>` : ''}</span>
-          <span class="muted">${esc(balanceShort(infoOf(c.id).balance))}</span></button></li>`
+          <span class="muted">${esc(suggestionBalance(c.id))}</span></button></li>`
       )
       .join('') + `<li><button type="button" class="sugg-btn new" data-action="sh-new">${esc(newLabel)}</button></li>`;
+}
+
+function suggestionBalance(id) {
+  const b = infoOf(id).balance;
+  return b === 0 ? t('sheet.inArchive') : balanceShort(b);
+}
+
+/** Новый покупатель в окне операции: предупредить, если такой уже есть (в том числе в архиве). */
+function updateSheetDup() {
+  const el = $('#sh-dup');
+  if (!el || !sheet?.isNew) return;
+  const name = L.normalize(sheet.newName);
+  const phone = cleanPhone(sheet.newPhone);
+  const dup = state.customers.find(
+    (o) => (phone.length === 11 && o.phone === phone) || (name && L.normalize(o.name) === name)
+  );
+  if (!dup) {
+    el.hidden = true;
+    el.innerHTML = '';
+    return;
+  }
+  el.hidden = false;
+  el.innerHTML = `<span>${esc(t('sheet.duplicate', { name: dup.name }))}</span>
+    <button type="button" class="btn small primary" data-action="sh-pick" data-id="${esc(dup.id)}">${esc(t('sheet.pickExisting'))}</button>`;
 }
 
 function updateSheetAmount() {
@@ -1033,8 +1138,13 @@ async function sheetSave() {
     closeSheet();
     await reload();
     render();
+    const newBalance = infoOf(customer.id).balance;
+    if (s.type === 'payment' && newBalance === 0) {
+      await paidOffDialog(customer, tx.id);
+      return;
+    }
     const sum = (s.type === 'credit' ? '+' : '−') + money(amount);
-    toast(t('toast.saved', { name: customer.name, sum, balance: balanceShort(infoOf(customer.id).balance) }), {
+    toast(t('toast.saved', { name: customer.name, sum, balance: balanceShort(newBalance) }), {
       label: t('toast.undo'),
       duration: 5000,
       run: () => undoTransaction(tx.id),
@@ -1045,6 +1155,25 @@ async function sheetSave() {
     updateSheetAmount();
     sheetError(errorText(err));
   }
+}
+
+/**
+ * Долг погашен полностью: покупатель уходит в архив (баланс 0), продавцу предлагается
+ * открыть WhatsApp с благодарностью. Отправляет сам продавец — без сервера иначе нельзя.
+ */
+async function paidOffDialog(customer, txId) {
+  const link = thanksLink(customer);
+  const buttons = [
+    { label: t('paid.undo'), value: 'undo' },
+    { label: t('common.ok'), value: 'ok', kind: link ? '' : 'primary' },
+  ];
+  if (link) buttons.push({ label: t('paid.thanks'), value: 'wa', kind: 'primary wa-fill', href: link });
+  const r = await showDialog({
+    title: t('paid.title'),
+    text: t('paid.text', { name: customer.name }) + (link ? '' : '\n\n' + t('paid.noPhone')),
+    buttons,
+  });
+  if (r.value === 'undo') await undoTransaction(txId);
 }
 
 async function undoTransaction(id) {
@@ -1100,7 +1229,11 @@ function showDialog({ title, text = '', input = null, buttons }) {
         ${text ? `<p class="dlg-text">${esc(text)}</p>` : ''}
         ${input ? `<input id="dlg-input" class="dlg-input" ${attrs}>` : ''}
         <div class="dlg-buttons">${buttons
-          .map((b, i) => `<button type="button" class="btn ${b.kind ?? ''}" data-i="${i}">${esc(b.label)}</button>`)
+          .map((b, i) =>
+            b.href
+              ? `<a class="btn ${b.kind ?? ''}" href="${esc(b.href)}" target="_blank" rel="noopener" data-i="${i}">${esc(b.label)}</a>`
+              : `<button type="button" class="btn ${b.kind ?? ''}" data-i="${i}">${esc(b.label)}</button>`
+          )
           .join('')}</div>
       </div>`;
     root.hidden = false;
@@ -1185,8 +1318,6 @@ const actions = {
   'new-credit': () => openSheet({ type: 'credit' }),
   op: (el) => openSheet({ type: el.dataset.type, customerId: el.dataset.id }),
   void: (el) => voidFromHistory(el.dataset.id),
-  archive: (el) => archive(el.dataset.id),
-  unarchive: (el) => unarchive(el.dataset.id),
 
   'sheet-close': () => closeSheet(),
   'sh-type': (el) => {
@@ -1213,6 +1344,7 @@ const actions = {
   },
   'sh-pick': (el) => {
     sheet.customerId = el.dataset.id;
+    sheet.isNew = false;
     sheet.error = '';
     renderSheet();
   },
@@ -1247,6 +1379,12 @@ const actions = {
   'backup-save': () => backupSave(),
   'backup-restore': () => $('#restore-file')?.click(),
   'install-help': () => showInstallHint(),
+  'reset-app': () => resetApp(),
+  'report-month': (el) => {
+    const d = new Date(state.report.year, state.report.month + Number(el.dataset.delta), 1);
+    state.report = { year: d.getFullYear(), month: d.getMonth() };
+    renderReport();
+  },
 };
 
 document.addEventListener('click', (e) => {
@@ -1273,8 +1411,10 @@ document.addEventListener('input', (e) => {
     } else if (el.id === 'sh-new-name') {
       sheet.newName = el.value;
       updateSheetAmount();
+      updateSheetDup();
     } else if (el.id === 'sh-new-phone') {
       sheet.newPhone = el.dataset.digits;
+      updateSheetDup();
     } else if (el.id === 'sh-comment') {
       sheet.comment = el.value;
     }

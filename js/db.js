@@ -305,6 +305,18 @@ export async function exportAll() {
 }
 
 /**
+ * Обнуление программы: удалить всех покупателей и все операции одной транзакцией.
+ * Настройки (магазин, Kaspi, язык, PIN) остаются. Проверку PIN делает экран.
+ */
+export async function clearCustomersAndTransactions() {
+  const db = await openDB();
+  const tx = db.transaction(['customers', 'transactions'], 'readwrite');
+  tx.objectStore('customers').clear();
+  tx.objectStore('transactions').clear();
+  await done(tx);
+}
+
+/**
  * Заменить все данные одной транзакцией: если что-то пойдёт не так,
  * IndexedDB откатит всё и старые данные останутся целы.
  * Данные должны быть заранее проверены (backup.validateBackup).

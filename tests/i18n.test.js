@@ -44,9 +44,10 @@ test('каждый ключ t(\'…\') из app.js есть в ru.json', () => {
 
 test('ключи, которые собираются из частей, тоже есть', () => {
   const groups = {
-    'tab.': ['debtors', 'overdue', 'all'],
+    'tab.': ['debtors', 'overdue', 'archive'],
     'sort.': ['recent', 'amount', 'name'],
     'method.': ['cash', 'kaspi'],
+    'month.': ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'],
     'amount.': ['empty', 'not_integer', 'not_positive', 'too_large'],
     'restore.err.': ['empty', 'not_json', 'not_dapter', 'newer_version', 'bad_structure', 'bad_customer', 'bad_transaction', 'duplicate_id', 'unknown_customer'],
   };

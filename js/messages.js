@@ -12,6 +12,9 @@ const TEXTS = {
     debtNoShop: (sum) => `Напоминаем, что за вами ${sum}.`,
     kaspi: (num) => `Можно перевести на Kaspi: ${num}.`,
     thanks: 'Спасибо!',
+    paidWithShop: (shop) => `Спасибо, ваш долг в магазине «${shop}» полностью погашен.`,
+    paidNoShop: 'Спасибо, ваш долг полностью погашен.',
+    welcome: 'Всегда рады вас видеть — приходите к нам ещё!',
     statementTitle: (name) => `Выписка: ${name}`,
     shop: (shop) => `Магазин «${shop}»`,
     date: (d) => `Дата: ${d}`,
@@ -29,6 +32,9 @@ const TEXTS = {
     debtNoShop: (sum) => `Қарызыңыз: ${sum}.`,
     kaspi: (num) => `Kaspi арқылы аударуға болады: ${num}.`,
     thanks: 'Рахмет!',
+    paidWithShop: (shop) => `Рахмет, «${shop}» дүкеніндегі қарызыңыз толық өтелді.`,
+    paidNoShop: 'Рахмет, қарызыңыз толық өтелді.',
+    welcome: 'Сізді әрқашан күтеміз — тағы келіңіз!',
     statementTitle: (name) => `Қарыз: ${name}`,
     shop: (shop) => `«${shop}» дүкені`,
     date: (d) => `Күні: ${d}`,
@@ -74,6 +80,15 @@ export function reminderText(lang, { name, amount, shopName, kaspiPhone }) {
   if (kaspiPhone) parts.push(L.kaspi(formatPhone(kaspiPhone)));
   parts.push(L.thanks);
   return parts.join(' ');
+}
+
+/**
+ * Благодарность после полного погашения долга.
+ * data: { name, shopName }. Пустой shopName — без названия магазина.
+ */
+export function paidOffText(lang, { name, shopName }) {
+  const L = t(lang);
+  return [L.hello(name), shopName ? L.paidWithShop(shopName) : L.paidNoShop, L.welcome].join(' ');
 }
 
 /**

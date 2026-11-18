@@ -3,7 +3,7 @@
 // Включает все тексты интерфейса и образцы сообщений WhatsApp из js/messages.js.
 
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { reminderText, statementText } from '../js/messages.js';
+import { reminderText, statementText, paidOffText } from '../js/messages.js';
 
 const root = new URL('../', import.meta.url);
 const ru = JSON.parse(await readFile(new URL('i18n/ru.json', root), 'utf8'));
@@ -19,6 +19,7 @@ const now = new Date(2026, 10, 18, 12);
 const messages = [
   ['whatsapp.reminder', reminderText('ru', sample), reminderText('kk', sample)],
   ['whatsapp.reminderNoKaspi', reminderText('ru', { ...sample, kaspiPhone: '' }), reminderText('kk', { ...sample, kaspiPhone: '' })],
+  ['whatsapp.paidOff', paidOffText('ru', sample), paidOffText('kk', sample)],
   [
     'whatsapp.statement',
     statementText('ru', { name: 'Айгуль' }, ops, { shopName: 'Береке', now }),

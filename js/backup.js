@@ -2,7 +2,7 @@
 // Верхняя часть — чистые функции (проверяются тестами в Node).
 // Нижняя часть — работа с файлами в браузере (проверяется вручную).
 
-import { SCHEMA_VERSION, exportAll, replaceAll, saveSettings } from './db.js';
+import { SCHEMA_VERSION, exportAll, replaceAll, saveSettings, clearCustomersAndTransactions } from './db.js';
 import { validateAmount, shopTotals, calendarDaysBetween } from './ledger.js';
 
 export const APP_ID = 'dapter';
@@ -196,4 +196,18 @@ export async function applyRestore(checked) {
     downloadFile(makeFile(buildBackup(current, now), backupFileName(now, '-before-restore')));
   }
   await replaceAll(checked.data);
+}
+
+/**
+ * Обнуление программы (после проверки PIN на экране): сначала скачивается копия
+ * текущих данных *-before-reset.json, затем удаляются покупатели и операции.
+ * Настройки остаются.
+ */
+export async function resetData() {
+  const now = new Date();
+  const current = await exportAll();
+  if (current.customers.length > 0 || current.transactions.length > 0) {
+    downloadFile(makeFile(buildBackup(current, now), backupFileName(now, '-before-reset')));
+  }
+  await clearCustomersAndTransactions();
 }
