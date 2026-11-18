@@ -1,0 +1,8 @@
+# Резервные копии с реальными данными покупателей — никогда не коммитить
+*-backup-*.json
+dapter-backup-*.json
+
+# Служебное
+node_modules/
+.DS_Store
+Thumbs.db
