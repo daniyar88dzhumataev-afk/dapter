@@ -4,7 +4,7 @@
 // ВАЖНО: при любом изменении файлов приложения увеличьте номер VERSION (dapter-v1 → dapter-v2).
 // Тогда телефон скачает новую версию и покажет плашку «Доступна новая версия — Обновить».
 
-const VERSION = 'dapter-v1';
+const VERSION = 'dapter-v2';
 
 const FILES = [
   './',
@@ -17,6 +17,7 @@ const FILES = [
   'js/db.js',
   'js/backup.js',
   'i18n/ru.json',
+  'i18n/kk.json',
   'icons/icon-192.png',
   'icons/icon-512.png',
   'icons/icon-maskable-512.png',

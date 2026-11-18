@@ -250,7 +250,7 @@ function updateList() {
   const sorters = {
     recent: (a, b) => (infoOf(b.id).lastAt > infoOf(a.id).lastAt ? 1 : infoOf(b.id).lastAt < infoOf(a.id).lastAt ? -1 : 0),
     amount: (a, b) => infoOf(b.id).balance - infoOf(a.id).balance,
-    name: (a, b) => a.name.localeCompare(b.name, 'ru'),
+    name: (a, b) => a.name.localeCompare(b.name, state.settings.uiLang),
   };
   rows.sort(sorters[state.sort] ?? sorters.recent);
 
@@ -513,6 +513,16 @@ function renderSettings() {
   app().innerHTML = `
     <header class="bar">${backLink('#/')}<h1 class="bar-title">${esc(t('settings.title'))}</h1></header>
     <main class="page">
+      <h2 class="section-title">${esc(t('settings.language'))}</h2>
+      <div class="form">
+        <label class="field"><span>${esc(t('settings.uiLang'))}</span>
+          <select id="ui-lang">${LANGS.map((l) => `<option value="${l}" ${s.uiLang === l ? 'selected' : ''}>${esc(t('lang.' + l))}</option>`).join('')}</select></label>
+        <label class="field"><span>${esc(t('settings.messageLang'))}</span>
+          <select id="msg-lang">
+            <option value="" ${!s.messageLang ? 'selected' : ''}>${esc(t('settings.messageLangSame'))}</option>
+            ${LANGS.map((l) => `<option value="${l}" ${s.messageLang === l ? 'selected' : ''}>${esc(t('lang.' + l))}</option>`).join('')}
+          </select></label>
+      </div>
       <form id="sform" class="form" novalidate>
         <h2 class="section-title">${esc(t('settings.shop'))}</h2>
         <label class="field"><span>${esc(t('settings.shopName'))}</span>
@@ -558,6 +568,25 @@ function renderSettings() {
       }
       <p class="footer muted">${esc(t('app.name'))} · ${esc(t('settings.privacy'))}</p>
     </main>`;
+}
+
+const LANGS = ['kk', 'ru'];
+
+async function changeUiLang(lang) {
+  if (!LANGS.includes(lang)) return;
+  await DB.saveSettings({ uiLang: lang });
+  await reload();
+  await loadTexts(lang);
+  document.title = t('app.name');
+  renderSettings();
+  toast(t('settings.langSaved'));
+}
+
+async function changeMessageLang(lang) {
+  await DB.saveSettings({ messageLang: LANGS.includes(lang) ? lang : null });
+  await reload();
+  renderSettings();
+  toast(t('settings.saved'));
 }
 
 async function submitSettings(form) {
@@ -1262,6 +1291,10 @@ document.addEventListener('change', (e) => {
     sheet.newConsent = el.checked;
   } else if (el.id === 'restore-file') {
     onRestoreFile(el);
+  } else if (el.id === 'ui-lang') {
+    changeUiLang(el.value);
+  } else if (el.id === 'msg-lang') {
+    changeMessageLang(el.value);
   }
 });
 

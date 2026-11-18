@@ -5,6 +5,25 @@ import { readFile } from 'node:fs/promises';
 
 const root = new URL('../', import.meta.url);
 const ru = JSON.parse(await readFile(new URL('i18n/ru.json', root), 'utf8'));
+const kk = JSON.parse(await readFile(new URL('i18n/kk.json', root), 'utf8'));
+const placeholders = (s) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
+
+test('в kk.json есть каждый ключ из ru.json', () => {
+  const missing = Object.keys(ru).filter((k) => !(k in kk));
+  assert.deepEqual(missing, [], `В kk.json не хватает ключей: ${missing.join(', ')}`);
+});
+
+test('в kk.json нет лишних ключей, которых нет в ru.json', () => {
+  assert.deepEqual(Object.keys(kk).filter((k) => !(k in ru)), []);
+});
+
+test('казахские тексты непустые и с теми же {подстановками}', () => {
+  for (const [key, value] of Object.entries(kk)) {
+    assert.equal(typeof value, 'string', key);
+    assert.notEqual(value.trim(), '', key);
+    assert.deepEqual(placeholders(value), placeholders(ru[key] ?? ''), key);
+  }
+});
 const appCode = await readFile(new URL('js/app.js', root), 'utf8');
 const dbCode = await readFile(new URL('js/db.js', root), 'utf8');
 

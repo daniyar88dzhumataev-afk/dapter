@@ -87,6 +87,13 @@
   "settings.saved": "Настройки сохранены",
   "settings.badDays": "Введите число дней от 1 до 365",
   "settings.privacy": "все данные хранятся только на этом телефоне",
+  "settings.language": "Язык · Тіл",
+  "settings.uiLang": "Язык приложения",
+  "settings.messageLang": "Язык сообщений покупателям",
+  "settings.messageLangSame": "как язык приложения",
+  "settings.langSaved": "Язык изменён",
+  "lang.ru": "Русский",
+  "lang.kk": "Қазақша",
 
   "pin.title": "PIN-код",
   "pin.unavailable": "PIN-код работает, только когда приложение открыто по https или на этом компьютере (localhost).",
